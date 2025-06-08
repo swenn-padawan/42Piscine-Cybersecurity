@@ -14,22 +14,38 @@
 
 #Modules to use: argparse, requests, BeautifulSoup, os, pathlib, shutil
 
+
+
 import sys
 
-r_mask = 0xb1000
-l_mask = 0xb0100
-p_mask = 0xb0010
+r_mask = 0b1000
+l_mask = 0b0100
+p_mask = 0b0010
 
 def parse_args():
     flags = 0b0000
-    if sys.argv[1] == '-r':
-        return (flag & r_mask)
+    for arg in sys.argv[1:]:
+        if arg.startswith('-'):
+            for c in arg[1:]:
+                if c == 'r':
+                    flags |= r_mask
+                elif c == 'p':
+                    flags |= p_mask
+                elif c == 'l':
+                    flags |= l_mask
+                else:
+                    print(f"Unknown Option: {c}")
+    return flags
+
+# def spider_exec():
+
 
 def main():
-    if len(sys.argv) > 1:
-        return ;
     flags = parse_args()
-    print(f"{flag:08b}")
-    if __name__ == "__main__":
-        main()
+    if flags == 0:
+        return
+    print(f"{flags:03b}")
 
+
+if __name__ == "__main__":
+    main()
