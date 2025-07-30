@@ -8,12 +8,14 @@ import (
 	"spider/utils"
 	"strconv"
 	"strings"
+	"regexp"
+	"path/filepath"
 )
 
 type ParseErrors int
 
 const (
-	ParsingOK ParseErrors = iota
+	OK ParseErrors = iota
 	LevelWithoutRecurs
 	FailedAtoi
 	FailedToCreatePath
@@ -57,7 +59,7 @@ func parse_args(argv []string) (ParseErrors, string, params) {
 	}
 	p.url = argv[len(argv)-1]
 	fmt.Printf("%s[LOG]: Spider: Parsing OK\n%s", utils.GREEN, utils.RESET)
-	return ParsingOK, "", p
+	return OK, "", p
 }
 
 func scrapping(p params) ParseErrors {
@@ -75,22 +77,43 @@ func scrapping(p params) ParseErrors {
 	}
 	defer response.Body.Close()
 
-	body, err := io.ReadAll(response.Body)
+	bodyBytes, err := io.ReadAll(response.Body)
 	if err != nil {
 		panic(err)
 	}
-	if !strings.Contains(string(body), "<img") {
-		fmt.Printf("%s[WARN]: Spider: %.20s... Don't contain images\n%s", utils.YELLOW, p.url, utils.RESET)
-		return ParsingOK
-	} else {
-		//TODO Parse Body response (strings.Index, strings.Contain, etc...)
-		//TODO if <img> read the raw bytes of the file, and copy in the path,
-		err := os.Mkdir(p.path, os.ModeDir)
+	body := string(bodyBytes)
+	re := regexp.MustCompile(`(?i)https?://[^\s'"]+\.(jpg|jpeg|png|gif|bmp)`)
+	matches := re.FindAllString(body, -1)
+
+	seen := make(map[string]bool)
+	for _, imgURL := range matches{
+		if seen[imgURL] {
+			continue
+		}
+		seen[imgURL] = true
+		fmt.Println("Downloading:", imgURL)
+
+		resp, err := http.Get(imgURL)
+		if err != nil{
+			fmt.Println("Failed:", err)
+			continue;
+		}
+		defer resp.Body.Close()
+		err = os.Mkdir(p.path, 0775)
 		if err != nil {
 			return FailedToCreatePath
 		}
+		filename := imgURL[strings.LastIndex(imgURL, "/")+1:]
+		filename = filepath.Join(p.path, filename)
+		out, err := os.Create(filename)
+		if err != nil{
+			fmt.Println("Cannot create file:", err)
+			continue;
+		}
+		io.Copy(out, resp.Body)
+		out.Close()
 	}
-	return ParsingOK
+	return OK
 }
 
 func main() {
@@ -98,7 +121,7 @@ func main() {
 		fmt.Printf("%s[Error]: Spider: Not enough arguments\n%s", utils.RED, utils.RESET)
 	}
 	err, strerr, p := parse_args(os.Args)
-	if err > ParsingOK {
+	if err > OK {
 		switch err {
 		case LevelWithoutRecurs:
 			fmt.Printf("%s[Error]: Spider: Try to add -r parameter first\n%s", utils.RED, utils.RESET)
@@ -108,7 +131,7 @@ func main() {
 		return
 	}
 	err = scrapping(p)
-	if err > ParsingOK {
+	if err > OK {
 		switch err {
 		case FailedToCreatePath:
 			fmt.Printf("%s[Error]: Spider: Failed to create: %s\n%s", utils.RED, p.path, utils.RESET)
